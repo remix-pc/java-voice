@@ -12,16 +12,19 @@ import java.net.*;
 public class HelloApplication extends Application {
 
     private static final int SERVER_PORT = 55555;
-    private static final String SERVER_IP = "127.0.0.1"; // Altere para o IP do servidor
+    // Removido o IP fixo daqui
 
     private DatagramSocket socket;
     private TargetDataLine mic;
     private SourceDataLine speakers;
     private boolean transmitting = false;
 
-
     @Override
-    public void start(Stage stage){
+    public void start(Stage stage) {
+        // NOVO: Campo para o IP do servidor
+        TextField ipField = new TextField("26.176.74.82"); // Coloque seu IP como padrão para facilitar
+        ipField.setPromptText("Digite o IP do servidor");
+
         TextField roomField = new TextField();
         roomField.setPromptText("Digite o nome da sala");
 
@@ -35,13 +38,21 @@ public class HelloApplication extends Application {
         TextArea status = new TextArea();
         status.setEditable(false);
 
-        VBox root = new VBox(10, roomField, connectBtn, talkBtn, disconnectBtn ,status);
+        // Adicionado o ipField ao layout
+        VBox root = new VBox(10, ipField, roomField, connectBtn, talkBtn, disconnectBtn, status);
         root.setStyle("-fx-padding: 20");
-        stage.setScene(new Scene(root, 300, 280));
+        stage.setScene(new Scene(root, 300, 320)); // Aumentei um pouco a altura
         stage.setTitle("Chat de Voz");
         stage.show();
 
         connectBtn.setOnAction(e -> {
+            // Pega o IP do campo de texto
+            String serverIp = ipField.getText().trim();
+            if (serverIp.isEmpty()) {
+                status.appendText("Por favor, digite o IP do servidor.\n");
+                return;
+            }
+
             String roomName = roomField.getText().trim();
             if (roomName.isEmpty()) {
                 status.appendText("Por favor, digite o nome da sala.\n");
@@ -50,7 +61,8 @@ public class HelloApplication extends Application {
 
             try {
                 socket = new DatagramSocket();
-                InetAddress serverAddr = InetAddress.getByName(SERVER_IP);
+                // Usa o IP digitado pelo usuário
+                InetAddress serverAddr = InetAddress.getByName(serverIp);
 
                 // Envia nome da sala ao servidor
                 byte[] roomData = roomName.getBytes();
@@ -71,18 +83,24 @@ public class HelloApplication extends Application {
                     try {
                         byte[] buffer = new byte[1024];
                         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                        while (true) {
+                        while (socket != null && !socket.isClosed()) {
                             socket.receive(packet);
-                            speakers.write(packet.getData(), 0, packet.getLength());
+                            if (speakers != null) {
+                                speakers.write(packet.getData(), 0, packet.getLength());
+                            }
                         }
                     } catch (Exception ex) {
-                        ex.printStackTrace();
+                        // Não imprime erro se o socket foi fechado de propósito
+                        if (!"Socket closed".equals(ex.getMessage())) {
+                            ex.printStackTrace();
+                        }
                     }
                 }).start();
 
                 talkBtn.setDisable(false);
                 connectBtn.setDisable(true);
                 roomField.setDisable(true);
+                ipField.setDisable(true); // Desabilita o campo de IP após conectar
                 disconnectBtn.setDisable(false);
                 status.appendText("Conectado à sala '" + roomName + "'\n");
 
@@ -95,12 +113,15 @@ public class HelloApplication extends Application {
             transmitting = true;
             new Thread(() -> {
                 try {
-                    InetAddress serverAddr = InetAddress.getByName(SERVER_IP);
+                    // Pega o IP do campo de texto novamente
+                    InetAddress serverAddr = InetAddress.getByName(ipField.getText().trim());
                     byte[] buffer = new byte[1024];
                     while (transmitting) {
                         int bytesRead = mic.read(buffer, 0, buffer.length);
                         DatagramPacket packet = new DatagramPacket(buffer, bytesRead, serverAddr, SERVER_PORT);
-                        socket.send(packet);
+                        if (socket != null && !socket.isClosed()) {
+                            socket.send(packet);
+                        }
                     }
                 } catch (Exception ex) {
                     ex.printStackTrace();
@@ -108,29 +129,29 @@ public class HelloApplication extends Application {
             }).start();
         });
 
+        talkBtn.setOnMouseReleased(e -> transmitting = false);
 
         disconnectBtn.setOnAction(e -> {
             try {
                 transmitting = false;
 
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                }
                 if (mic != null) {
                     mic.stop();
                     mic.close();
                 }
-
                 if (speakers != null) {
                     speakers.stop();
                     speakers.close();
-                }
-
-                if (socket != null && !socket.isClosed()) {
-                    socket.close();
                 }
 
                 talkBtn.setDisable(true);
                 connectBtn.setDisable(false);
                 disconnectBtn.setDisable(true);
                 roomField.setDisable(false);
+                ipField.setDisable(false); // Habilita o campo de IP novamente
 
                 status.appendText("Desconectado.\n");
             } catch (Exception ex) {
@@ -138,7 +159,10 @@ public class HelloApplication extends Application {
             }
         });
 
-        talkBtn.setOnMouseReleased(e -> transmitting = false);
+        // Garante que tudo será fechado se o usuário fechar a janela
+        stage.setOnCloseRequest(event -> {
+            disconnectBtn.fire(); // Simula o clique no botão de desconectar
+        });
     }
 
     public static void main(String[] args) {
