@@ -22,6 +22,10 @@ public class VoiceServer {
             byte[] buffer = new byte[1024];
 
             System.out.println("Servidor de voz rodando em " + serverAddress.getHostAddress() + ":" + PORT);
+
+
+            //FAWDFAWGFAWFDAWSDAWTESTE
+
             System.out.println("A aguardar conexões...");
 
             while (true) {
